@@ -138,5 +138,46 @@ class SSOTests(unittest.TestCase):
         self.assertEqual(session.post.call_count, 5)
         self.assertTrue(all(call.args[0].startswith('https://') for call in session.post.call_args_list))
 
+
+class ErrorTests(unittest.TestCase):
+    def test_network_errors_are_specific_and_redacted(self):
+        import requests
+        from learnus.client import Session
+        cases = [
+            (requests.exceptions.SSLError, 'TLS'),
+            (requests.exceptions.ProxyError, '프록시'),
+            (requests.exceptions.Timeout, '시간 초과'),
+            (requests.exceptions.ConnectionError, '연결 실패'),
+        ]
+        for error, expected in cases:
+            with self.subTest(error=error.__name__):
+                with Session() as session:
+                    session.stage = '2/6 연세대 SSO 연결'
+                    with patch('requests.Session.request', side_effect=error('password=SECRET cookie=SECRET')):
+                        with self.assertRaises(UserError) as ctx:
+                            session.get('https://infra.yonsei.ac.kr/sso/?token=SECRET')
+                message = str(ctx.exception)
+                self.assertIn(expected, message)
+                self.assertIn('2/6', message)
+                self.assertIn('infra.yonsei.ac.kr', message)
+                self.assertNotIn('SECRET', message)
+
+    def test_http_error_reports_status_only(self):
+        import requests
+        from learnus.client import Session
+        response = requests.Response()
+        response.status_code = 404
+        with Session() as session, patch('requests.Session.request', return_value=response):
+            with self.assertRaisesRegex(UserError, 'HTTP 404'):
+                session.get('https://ys.learnus.org/passni/sso/coursemosLogin.php')
+
+    def test_missing_sso_fields_do_not_leak_server_response(self):
+        from learnus.auth import fields
+        response = type('R', (), {'text':'<html>password=SECRET</html>'})()
+        with self.assertRaises(UserError) as ctx:
+            fields(response, '4/6 계정 인증', 'E3')
+        self.assertIn('4/6', str(ctx.exception))
+        self.assertNotIn('SECRET', str(ctx.exception))
+
 if __name__ == '__main__':
     unittest.main()

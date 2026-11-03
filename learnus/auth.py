@@ -6,6 +6,18 @@ import requests
 from bs4 import BeautifulSoup
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
+from .errors import UserError
+
+def fields(response, stage, *names):
+    soup = BeautifulSoup(response.text, 'html.parser')
+    result = []
+    for name in names:
+        item = soup.find('input', {'name': name})
+        if item is None or not item.get('value'):
+            raise UserError(f'{stage}: 예상한 SSO 응답이 없습니다. 로그인 거부·추가 인증·사이트 변경 가능성이 있습니다.')
+        result.append(item['value'])
+    return result
+
 
 def legacy_login(id: str, pw: str, s: requests.Session) -> requests.Session:
     LEARNUS_URL = 'https://ys.learnus.org'
@@ -17,9 +29,9 @@ def legacy_login(id: str, pw: str, s: requests.Session) -> requests.Session:
         'username': id,
         'password': pw
     }
+    s.stage = '1/6 LearnUS 로그인 시작'
     res = s.post(LEARNUS_URL + '/passni/sso/coursemosLogin.php', data=data1)
-    soup = BeautifulSoup(res.text, features='html.parser')
-    s1 = soup.find('input', {'name': 'S1'})['value']
+    s1, = fields(res, s.stage, 'S1')
 
     data2 = {
         'app_id': 'ednetYonsei',
@@ -36,10 +48,9 @@ def legacy_login(id: str, pw: str, s: requests.Session) -> requests.Session:
         'username': id,
         'password': pw
     }
+    s.stage = '2/6 연세대 SSO 연결'
     res = s.post(YONSEI_URL + '/sso/PmSSOService', data=data2)
-    soup = BeautifulSoup(res.text, features='html.parser')
-    sc = soup.find('input', {'name': 'ssoChallenge'})['value']
-    km = soup.find('input', {'name': 'keyModulus'})['value']
+    sc, km = fields(res, s.stage, 'ssoChallenge', 'keyModulus')
 
     data3 = {
         'app_id': 'ednetYonsei',
@@ -59,9 +70,9 @@ def legacy_login(id: str, pw: str, s: requests.Session) -> requests.Session:
         'username': id,
         'password': pw
     }
+    s.stage = '3/6 SSO 인증 준비'
     res = s.post(LEARNUS_URL + '/passni/sso/coursemosLogin.php', data=data3)
-    soup = BeautifulSoup(res.text, features='html.parser')
-    s1 = soup.find('input', {'name': 'S1'})['value']
+    s1, = fields(res, s.stage, 'S1')
     json_str = json.dumps(dict(userid=id, userpw=pw, ssoChallenge=sc), ensure_ascii=False)
     key_pair = RSA.construct((int(km, 16), 0x10001))
     cipher = PKCS1_v1_5.new(key_pair)
@@ -82,12 +93,9 @@ def legacy_login(id: str, pw: str, s: requests.Session) -> requests.Session:
         'username': id,
         'password': pw
     }
+    s.stage = '4/6 연세대 계정 인증'
     res = s.post(YONSEI_URL + '/sso/PmSSOAuthService', data=data4)
-    soup = BeautifulSoup(res.text, features='html.parser')
-    e3 = soup.find('input', {'name': 'E3'})['value']
-    e4 = soup.find('input', {'name': 'E4'})['value']
-    s2 = soup.find('input', {'name': 'S2'})['value']
-    cltid = soup.find('input', {'name': 'CLTID'})['value']
+    e3, e4, s2, cltid = fields(res, s.stage, 'E3', 'E4', 'S2', 'CLTID')
 
     data5 = {
         'app_id': 'ednetYonsei',
@@ -105,7 +113,9 @@ def legacy_login(id: str, pw: str, s: requests.Session) -> requests.Session:
         'username': id,
         'password': pw
     }
+    s.stage = '5/6 LearnUS 세션 생성'
     s.post(LEARNUS_URL + '/passni/sso/spLoginData.php', data=data5)
 
+    s.stage = '6/6 로그인 마무리'
     s.get(LEARNUS_URL + '/passni/spLoginProcess.php')
     return s

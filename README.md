@@ -42,3 +42,9 @@ Windows에서 `build-windows.bat` 실행 시 `dist/LearnUSDownloader/`에 실행
 ## 참고 및 라이선스
 
 SSO 어댑터 `learnus/auth.py`는 [henryjmin/learnus-dl](https://github.com/henryjmin/learnus-dl)의 MIT 라이선스 코드에서 파생되었습니다. 저작권 고지는 `THIRD_PARTY_LICENSE.txt`에 보존되어 있습니다. 영상 유형 조사에는 [ashgold/Learnus-video-downloader](https://github.com/ashgold/Learnus-video-downloader)를 참고했으며 노트북 코드는 복사하지 않았습니다.
+
+## 로그인 실패 진단
+
+최신 ZIP을 새 폴더에 풀고 `setup.bat` → `run.bat`로 실행하세요. 로그인 실패 시 `1/6`~`6/6` 단계, 서버 호스트와 TLS·프록시·시간 초과·HTTP 상태를 표시합니다. 원래 예외 메시지나 응답 HTML, 비밀번호, 쿠키, URL 쿼리는 표시하지 않습니다.
+
+`diagnose.bat`는 학번·비밀번호 없이 두 서버의 공개 페이지 연결을 확인합니다. 연결 성공은 로그인 성공을 뜻하지 않습니다. 결과에 403/404가 나오면 해당 HTTP 응답은 받았지만 서비스가 요청을 거부하거나 경로가 없을 수 있습니다. 이 결과와 앱의 단계별 오류 메시지를 알려주세요. TLS 오류를 해결하기 위해 인증서 검증을 끄지 마세요.

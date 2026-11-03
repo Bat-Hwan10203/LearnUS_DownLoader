@@ -10,18 +10,19 @@ import requests
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES
 from .auth import legacy_login
+from .errors import UserError, connection_error
 
 BASE = 'https://ys.learnus.org'
-
-class UserError(Exception):
-    pass
 
 class Session(requests.Session):
     def request(self, method, url, **kwargs):
         kwargs.setdefault('timeout', (10, 45))
-        response = super().request(method, url, **kwargs)
-        response.raise_for_status()
-        return response
+        try:
+            response = super().request(method, url, **kwargs)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            raise connection_error(exc, url, getattr(self, 'stage', '서버 요청')) from None
 
 @dataclass(frozen=True)
 class Video:
@@ -58,6 +59,7 @@ class Client:
         self.session = Session()
         try:
             legacy_login(username, password, self.session)
+            self.session.stage = '로그인 결과 확인'
             page = self.session.get(BASE + '/my/')
             soup = BeautifulSoup(page.text, 'html.parser')
             if '/login/' in page.url or not soup.select('a[href*="logout.php"]'):
@@ -68,6 +70,7 @@ class Client:
         except Exception:
             self.session.cookies.clear()
             raise
+        self.session.stage = '서버 요청'
         self.logged_in = True
 
     def _check_cancel(self):
