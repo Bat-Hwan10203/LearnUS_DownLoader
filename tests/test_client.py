@@ -179,5 +179,22 @@ class ErrorTests(unittest.TestCase):
         self.assertIn('4/6', str(ctx.exception))
         self.assertNotIn('SECRET', str(ctx.exception))
 
+
+class DiagnosticTests(unittest.TestCase):
+    def test_followed_page_structure_omits_values_and_tokens(self):
+        import json
+        from learnus.diagnose import page_structure
+        response = type('R', (), {
+            'url': 'https://ys.learnus.org/login/new.php?token=SECRET',
+            'status_code': 200,
+            'history': [],
+            'text': '<form action="/new/sso.php?token=SECRET" method="post"><input name="password" value="SECRET"><input name="nonce" value="SECRET"></form><script>var password="SECRET"; location.href="/new/login.php?token=SECRET";</script>',
+        })()
+        result = page_structure(response)
+        self.assertEqual(result['forms'][0]['action'], 'https://ys.learnus.org/new/sso.php')
+        self.assertEqual(result['forms'][0]['fields'], ['password', 'nonce'])
+        self.assertIn('https://ys.learnus.org/new/login.php', result['login_references'])
+        self.assertNotIn('SECRET', json.dumps(result))
+
 if __name__ == '__main__':
     unittest.main()

@@ -17,7 +17,10 @@ def connection_error(exc, url, stage='서버 요청'):
         reason = '서버 응답 시간 초과. 잠시 후 재시도하세요.'
     elif isinstance(exc, requests.exceptions.HTTPError):
         code = exc.response.status_code if exc.response is not None else '알 수 없음'
-        reason = f'HTTP {code}. 로그인 주소 변경 또는 서버의 요청 거부 여부를 확인해야 합니다.'
+        if code == 404:
+            reason = 'HTTP 404: 요청한 주소가 없습니다. 로그인 경로가 바뀌었을 수 있습니다. 비밀번호 오류를 뜻하지 않습니다. 최신 diagnose.bat 결과가 필요합니다.'
+        else:
+            reason = f'HTTP {code}. 서버가 요청을 거부하거나 처리하지 못했습니다.'
     elif isinstance(exc, requests.exceptions.ConnectionError):
         reason = '연결 실패. DNS·방화벽·인터넷 연결 또는 서버 상태를 확인하세요.'
     else:
