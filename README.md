@@ -2,7 +2,7 @@
 
 앱에서 학번·비밀번호로 로그인하고, 강좌 또는 영상 링크에서 목록을 수집해 선택 다운로드하는 초기 버전입니다. Edge 실행과 쿠키 복사가 필요하지 않습니다.
 
-**현재 연세대 SSO 로그인과 실제 강의 다운로드는 계정으로 검증되지 않았습니다.** 기존 공개 프로젝트의 SSO 프로토콜을 바탕으로 구현했으므로 사이트 변경·추가 인증 시 로그인 어댑터 수정이 필요할 수 있습니다. 클라우드 테스트 통과가 실제 LearnUS 호환성을 뜻하지 않습니다.
+**현재 연세대 SSO 로그인과 실제 강의 다운로드는 계정으로 검증되지 않았습니다.** 현재 공개 SSO 화면에서 확인한 `spLogin2.php` → `PmSSOService` → RSA `E2` 인증 흐름을 사용합니다. 실제 서버에서 계정 입력 직전 단계까지 확인했으며, 계정 인증 이후 콜백과 실제 영상은 로컬 검증이 필요합니다. 사이트 변경·추가 인증 시 로그인 어댑터 수정이 필요할 수 있습니다. 클라우드 테스트 통과가 실제 LearnUS 호환성을 뜻하지 않습니다.
 
 ## Windows 실행
 
@@ -41,12 +41,21 @@ Windows에서 `build-windows.bat` 실행 시 `dist/LearnUSDownloader/`에 실행
 
 ## 참고 및 라이선스
 
-SSO 어댑터 `learnus/auth.py`는 [henryjmin/learnus-dl](https://github.com/henryjmin/learnus-dl)의 MIT 라이선스 코드에서 파생되었습니다. 저작권 고지는 `THIRD_PARTY_LICENSE.txt`에 보존되어 있습니다. 영상 유형 조사에는 [ashgold/Learnus-video-downloader](https://github.com/ashgold/Learnus-video-downloader)를 참고했으며 노트북 코드는 복사하지 않았습니다.
+초기 SSO 어댑터는 [henryjmin/learnus-dl](https://github.com/henryjmin/learnus-dl)의 MIT 라이선스 코드에서 파생되었습니다. 현재 어댑터는 실제 공개 SSO 폼과 JavaScript에서 확인한 절차로 교체했습니다. 저작권 고지는 `THIRD_PARTY_LICENSE.txt`에 보존되어 있습니다. 영상 유형 조사에는 [ashgold/Learnus-video-downloader](https://github.com/ashgold/Learnus-video-downloader)를 참고했으며 노트북 코드는 복사하지 않았습니다.
 
 ## 로그인 실패 진단
 
-최신 ZIP을 새 폴더에 풀고 `setup.bat` → `run.bat`로 실행하세요. 로그인 실패 시 `1/6`~`6/6` 단계, 서버 호스트와 TLS·프록시·시간 초과·HTTP 상태를 표시합니다. 원래 예외 메시지나 응답 HTML, 비밀번호, 쿠키, URL 쿼리는 표시하지 않습니다.
+최신 ZIP을 새 폴더에 풀고 `setup.bat` → `run.bat`로 실행하세요. 로그인 실패 시 `1/5`~`5/5` 단계, 서버 호스트와 TLS·프록시·시간 초과·HTTP 상태를 표시합니다. 원래 예외 메시지나 응답 HTML, 비밀번호, 쿠키, URL 쿼리는 표시하지 않습니다.
 
 `diagnose.bat`는 학번·비밀번호 없이 LearnUS 공개 로그인 페이지의 리다이렉트를 따라가서 최종 주소, 폼 전송 주소, 입력 필드 이름과 로그인 관련 링크를 확인합니다. 입력값·쿠키·응답 HTML·URL 쿼리는 출력하지 않습니다. 연결 성공은 로그인 성공을 뜻하지 않습니다. 결과에 403/404가 나오면 해당 HTTP 응답은 받았지만 서비스가 요청을 거부하거나 경로가 없을 수 있습니다. 이 결과와 앱의 단계별 오류 메시지를 알려주세요. TLS 오류를 해결하기 위해 인증서 검증을 끄지 마세요.
 
 첫 단계 HTTP 404는 예전 SSO 경로가 현재 존재하지 않거나 서비스가 해당 요청에 404를 반환한다는 뜻입니다. 현재 로그인 구조를 확인하기 전에는 비밀번호 오류로 판단하거나 추측한 다른 주소에 계정 정보를 보내지 않습니다.
+
+## 현재 SSO 수정 사항
+
+- 폐기된 `coursemosLogin.php`에 계정 정보를 보내던 경로를 제거했습니다.
+- LearnUS 로그인 화면을 먼저 방문하고 Referer와 브라우저 User-Agent를 사용해 `spLogin2.php`로 진입합니다.
+- 서버가 제공하는 hidden 필드, challenge와 RSA 공개키를 사용합니다. 계정 정보는 `E2`로 암호화하며 평문 로그인 필드는 비웁니다.
+- 서버의 자동 제출 폼과 리다이렉트로 세션을 생성하고 `/my/`에서 로그아웃 링크 존재를 확인합니다.
+- 인증 과정의 모든 리다이렉트/폼 대상은 HTTPS 학교 호스트 두 곳으로 제한합니다. CAPTCHA 요청이나 로그인 거부 시 재시도를 반복하지 않고 중단합니다.
+- 실제 공개 서버 사전 확인 및 모의 인증 테스트 통과는 실제 계정 로그인 성공을 의미하지 않습니다.

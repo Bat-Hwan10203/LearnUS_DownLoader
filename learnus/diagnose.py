@@ -5,6 +5,7 @@ from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 from .client import Session
 from .errors import UserError
+from .auth import USER_AGENT
 
 
 def safe_url(url):
@@ -57,6 +58,7 @@ def main():
     pending = ['https://ys.learnus.org/login/index.php']
     seen = set()
     with Session() as session:
+        session.headers['User-Agent'] = USER_AGENT
         session.stage = '공개 로그인 페이지 구조 확인'
         while pending and len(seen) < 8:
             url = pending.pop(0)
@@ -64,7 +66,7 @@ def main():
                 continue
             seen.add(url)
             try:
-                response = session.get(url, allow_redirects=False)
+                response = session.get(url, headers={'Referer': 'https://ys.learnus.org/login.php'}, allow_redirects=False)
                 for _ in range(8):
                     if not response.is_redirect:
                         break
