@@ -12,8 +12,8 @@ from .auth import BASE, rejection, script_value
 from .errors import UserError
 
 
-def launch_browser(playwright):
-    options = {'headless': True}
+def launch_browser(playwright, show_login=False):
+    options = {'headless': not show_login}
     proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy')
     if proxy:
         parsed = urlsplit(proxy)
@@ -39,10 +39,11 @@ def launch_browser(playwright):
 def open_login(context):
     main = context.new_page()
     main.goto(BASE + '/login.php', wait_until='domcontentloaded')
-    # Preserve window.opener, which school SSO callbacks may use to refresh LearnUS.
-    with context.expect_page() as opened:
-        main.evaluate("url => window.open(url, '_blank')", BASE + '/passni/sso/spLogin2.php')
-    popup = opened.value
+    # Use the site's real link so navigation matches a normal private Chrome tab.
+    before = list(context.pages)
+    main.locator('a[href*="/passni/sso/spLogin2.php"]').first.click()
+    pages = [page for page in context.pages if page not in before]
+    popup = pages[-1] if pages else main
     popup.wait_for_selector('#loginPasswd', state='visible')
     if urlsplit(popup.url).hostname != 'infra.yonsei.ac.kr' or urlsplit(popup.url).scheme != 'https':
         raise UserError('예상하지 않은 로그인 화면입니다. 계정 정보를 입력하지 않았습니다.')
@@ -63,13 +64,13 @@ def transfer_cookies(cookies, session):
         ))
 
 
-def login_browser(username, password, session, cancel=None):
+def login_browser(username, password, session, cancel=None, show_login=False):
     session.stage = '1/4 공식 로그인 엔진 시작'
     browser = None
     try:
         with sync_playwright() as playwright:
             try:
-                browser = launch_browser(playwright)
+                browser = launch_browser(playwright, show_login=show_login)
                 context = browser.new_context()  # Isolated from the user's Chrome profile.
                 context.set_default_timeout(30000)
                 session.stage = '2/4 공식 SSO 화면 연결'
@@ -95,7 +96,9 @@ def login_browser(username, password, session, cancel=None):
                         scripts = '\n'.join(t.get_text() for t in content.find_all('script', src=False))
                         code = script_value(scripts, 'retCode') or script_value(scripts, 'returnCode')
                         if content.select('input[type="password"]') and code and code not in ('0', '0000'):
-                            raise rejection(scripts)
+                            info = content.select_one('#info')
+                            rendered = info.get_text(' ', strip=True) if info else ''
+                            raise rejection(scripts, rendered_message=rendered, sensitive=(username, password))
                         if content.select('input[name="captcha_yn"][value="Y"]'):
                             raise UserError('SSO에서 CAPTCHA 인증을 요청했습니다. 자동 재시도하지 않았습니다.')
                     session.stage = '4/4 LearnUS 로그인 결과 확인'

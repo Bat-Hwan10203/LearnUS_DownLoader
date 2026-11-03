@@ -53,12 +53,12 @@ class Client:
         self.cancel = threading.Event()
         self.logged_in = False
 
-    def login(self, username, password):
+    def login(self, username, password, show_login=False):
         self.logged_in = False
         self.session.close()
         self.session = Session()
         try:
-            login_browser(username, password, self.session, self.cancel)
+            login_browser(username, password, self.session, self.cancel, show_login=show_login)
             self.session.stage = '로그인 결과 확인'
             page = self.session.get(BASE + '/my/')
             soup = BeautifulSoup(page.text, 'html.parser')

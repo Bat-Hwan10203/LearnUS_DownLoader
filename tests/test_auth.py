@@ -119,3 +119,13 @@ class AuthTests(unittest.TestCase):
         with self.assertRaises(UserError):
             login_sso('student', 'password', session)
         self.assertEqual(session.request.call_count, 4)
+
+    def test_escaped_server_message_can_be_understood_without_credentials(self):
+        from learnus.auth import rejection, script_value
+        scripts = r"var retCode='[PM_UAN]011'; var returnMessage='\uc778\uc99d \uc815\ubcf4 \ud655\uc778';"
+        self.assertEqual(script_value(scripts, 'returnMessage'), '인증 정보 확인')
+        error = rejection(scripts, rendered_message='학번 student 비밀번호 secret <b>확인</b>', sensitive=('student', 'secret'))
+        self.assertIn('서버 안내', str(error))
+        self.assertNotIn('student', str(error))
+        self.assertNotIn('secret', str(error))
+        self.assertIn('[PM_UAN]011', str(error))

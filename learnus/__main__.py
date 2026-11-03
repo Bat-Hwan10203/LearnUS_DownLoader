@@ -31,6 +31,8 @@ class App:
         self.password.pack(side='left', padx=8)
         self.login_button = ttk.Button(login, text='로그인', command=self.login)
         self.login_button.pack(side='left')
+        self.show_login = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frame, text='로그인 화면 표시 (문제 확인용, 기본은 창 없음)', variable=self.show_login).pack(anchor='w', pady=(8, 0))
         ttk.Label(frame, text='비밀번호·세션은 디스크에 저장하지 않습니다. 앱을 닫으면 다시 로그인해야 합니다.').pack(anchor='w', pady=8)
         row = ttk.Frame(frame)
         row.pack(fill='x', pady=8)
@@ -96,7 +98,8 @@ class App:
         self.videos = []
         self.listbox.delete(0, 'end')
         self.status.set('로그인 중…')
-        self.run(lambda: self.client.login(username, password), lambda _: self.status.set('로그인 확인 완료'))
+        show_login = self.show_login.get()
+        self.run(lambda: self.client.login(username, password, show_login=show_login), lambda _: self.status.set('로그인 확인 완료'))
 
     def collect(self):
         url = self.url.get().strip()

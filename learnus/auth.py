@@ -4,6 +4,7 @@ The earlier adapter was based on Henry Min's MIT-licensed learnus-dl;
 see THIRD_PARTY_LICENSE.txt. Credentials and SSO tokens are never logged.
 """
 import json
+import html
 import re
 from urllib.parse import urljoin, urlsplit
 
@@ -104,12 +105,32 @@ def prepare_login(session):
 
 
 def script_value(scripts, name):
-    match = re.search(r"\b" + re.escape(name) + r"\s*=\s*([\"'])(.*?)\1", scripts)
-    return match[2] if match else ''
+    match = re.search(r"\b" + re.escape(name) + r"\s*=\s*([\"'])((?:\\.|(?!\1).)*)\1", scripts)
+    if not match:
+        return ''
+    value = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m[1], 16)), match[2])
+    value = re.sub(r'\\x([0-9a-fA-F]{2})', lambda m: chr(int(m[1], 16)), value)
+    return value.replace(r"\'", "'").replace(r'\"', '"').replace(r'\n', '\n').replace(r'\r', '\r')
 
 
-def rejection(scripts):
-    # Show fixed labels and tightly validated codes, never raw server text.
+def safe_server_message(message, sensitive):
+    from urllib.parse import quote, quote_plus
+    message = BeautifulSoup(html.unescape(message), 'html.parser').get_text(' ', strip=True)
+    for value in sensitive:
+        if value:
+            for variant in (value, quote(value, safe=''), quote_plus(value)):
+                message = message.replace(variant, '[숨김]')
+    # Never show credential dumps or long opaque tokens, even in server errors.
+    if re.search(r'password\s*[:=]|userpw\s*[:=]|cookie\s*[:=]|authorization\s*[:=]', message, re.I):
+        return '서버 메시지에 민감정보 형식이 포함되어 표시하지 않았습니다.'
+    message = re.sub(r'https?://\S+', '[주소 숨김]', message)
+    message = re.sub(r'[A-Za-z0-9+/=_-]{24,}', '[토큰 숨김]', message)
+    message = re.sub(r'[^\s@]+@[^\s@]+\.[^\s@]+', '[이메일 숨김]', message)
+    return ' '.join(message.split())[:350]
+
+
+def rejection(scripts, *, rendered_message=None, sensitive=()):
+    # Detailed text is enabled only with credential-redaction context.
     message = script_value(scripts, 'returnMessage')
     code = script_value(scripts, 'retCode') or script_value(scripts, 'returnCode')
     if not re.fullmatch(r'(?:\[[A-Z_]{1,20}\])?[A-Z0-9_-]{1,16}', code):
@@ -124,6 +145,8 @@ def rejection(scripts):
         reason = '계정 정보 불일치 안내'
     else:
         reason = '서버의 상세 사유를 자동 분류하지 못함'
+    detail = safe_server_message(rendered_message or message, sensitive) if sensitive else ''
+    reason = reason + ('\n서버 안내: ' + detail if detail else '')
     return UserError(f'SSO에서 로그인을 완료하지 못했습니다.\n{reason} (서버 코드: {code}).\n자동 재시도는 하지 않았습니다. 일반 LearnUS 로그인에서 계정 상태를 확인하세요.')
 
 
