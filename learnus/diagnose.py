@@ -51,15 +51,42 @@ def page_structure(response):
 
 
 def main():
-    print('LearnUS public login diagnostics v2 — no credentials submitted')
+    print('LearnUS public login diagnostics v3 — no credentials submitted')
+    # Follow only public GET links/iframes on the known school hosts. Never submit forms.
+    allowed = {'ys.learnus.org', 'infra.yonsei.ac.kr'}
+    pending = ['https://ys.learnus.org/login/index.php']
+    seen = set()
     with Session() as session:
         session.stage = '공개 로그인 페이지 구조 확인'
-        try:
-            response = session.get('https://ys.learnus.org/login/index.php')
-            print(json.dumps(page_structure(response), ensure_ascii=False, indent=2))
-            print('위 내용은 로그인 성공 여부가 아니라 현재 로그인 페이지 구조입니다.')
-        except UserError as exc:
-            print(str(exc))
+        while pending and len(seen) < 8:
+            url = pending.pop(0)
+            if url in seen:
+                continue
+            seen.add(url)
+            try:
+                response = session.get(url, allow_redirects=False)
+                for _ in range(8):
+                    if not response.is_redirect:
+                        break
+                    target = urljoin(response.url, response.headers.get('Location', ''))
+                    if urlsplit(target).scheme != 'https' or urlsplit(target).hostname not in allowed:
+                        print('외부 리다이렉트 (자동 접속 안 함):', safe_url(target))
+                        break
+                    response = session.get(target, allow_redirects=False)
+                print(json.dumps(page_structure(response), ensure_ascii=False, indent=2))
+                soup = BeautifulSoup(response.text, 'html.parser')
+                candidates = []
+                for tag in soup.select('a[href], iframe[src]'):
+                    raw = tag.get('href') or tag.get('src') or ''
+                    if tag.name == 'iframe' or re.search(r'spLogin2|/sso/|/login/method/', raw, re.I):
+                        candidates.append(urljoin(response.url, raw))
+                for candidate in candidates:
+                    parsed = urlsplit(candidate)
+                    if parsed.scheme == 'https' and parsed.hostname in allowed and not parsed.username and candidate not in seen and candidate not in pending:
+                        pending.append(candidate)
+            except UserError as exc:
+                print(str(exc))
+    print('위 내용은 로그인 성공 여부가 아니라 현재 로그인 페이지 구조입니다.')
 
 if __name__ == '__main__':
     main()
