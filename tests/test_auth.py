@@ -84,3 +84,38 @@ class AuthTests(unittest.TestCase):
         with self.assertRaisesRegex(UserError, '로그인을 완료하지 못했습니다'):
             login_sso('student', 'wrong', session)
         self.assertEqual(session.request.call_count, 4)
+
+    def test_authenticated_template_with_password_ui_is_relayed(self):
+        session = self.setup_session()
+        replies = list(session.request.side_effect)
+        replies[3] = response(INFRA+'/sso/PmSSOAuthService', '''
+        <form name="ssoLoginForm" action="https://ys.learnus.org/passni/sso/callback.php" method="post">
+        <input type="password" name="loginPasswd"><input name="loginId">
+        <input type="hidden" name="E3" value="auth-result"></form>
+        <script>var login_url='https://ys.learnus.org/passni/sso/callback.php';
+        if (login_url != '') { document.ssoLoginForm.submit(); }</script>''')
+        session.request.side_effect = replies
+        login_sso('student', 'password', session)
+        relay = session.request.call_args_list[4].kwargs['data']
+        self.assertEqual(relay['E3'], 'auth-result')
+        self.assertEqual(relay['loginPasswd'], '')
+        self.assertEqual(session.request.call_args_list[3].kwargs['headers']['Origin'], INFRA)
+
+    def test_rejection_code_and_reason_are_redacted(self):
+        from learnus.auth import rejection
+        error = rejection("var retCode='[PM_UAN]038'; var returnMessage='비밀번호 변경 필요 SECRET';")
+        self.assertIn('[PM_UAN]038', str(error))
+        self.assertIn('변경/만료', str(error))
+        self.assertNotIn('SECRET', str(error))
+
+    def test_login_url_without_auth_result_is_not_treated_as_success(self):
+        session = self.setup_session()
+        replies = list(session.request.side_effect)
+        replies[3] = response(INFRA+'/sso/PmSSOAuthService', '''
+        <form name="ssoLoginForm" action="https://ys.learnus.org/passni/sso/callback.php" method="post">
+        <input type="password" name="loginPasswd"></form>
+        <script>var login_url='https://ys.learnus.org/passni/sso/callback.php'; document.ssoLoginForm.submit();</script>''')
+        session.request.side_effect = replies
+        with self.assertRaises(UserError):
+            login_sso('student', 'password', session)
+        self.assertEqual(session.request.call_count, 4)

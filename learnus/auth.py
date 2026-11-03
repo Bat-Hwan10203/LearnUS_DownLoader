@@ -41,6 +41,9 @@ def trusted_url(url):
 def request(session, method, url, *, referer=None, data=None):
     """Validate every redirect before following it, including 307/308 POSTs."""
     headers = {'Referer': referer} if referer else {}
+    if method == 'POST' and referer:
+        origin = urlsplit(referer)
+        headers['Origin'] = f'{origin.scheme}://{origin.netloc}'
     for _ in range(8):
         trusted_url(url)
         response = session.request(method, url, data=data, headers=headers, allow_redirects=False)
@@ -52,6 +55,9 @@ def request(session, method, url, *, referer=None, data=None):
         if response.status_code == 303 or (response.status_code in (301, 302) and method == 'POST'):
             method, data = 'GET', None
         headers = {'Referer': response.url}
+        if method == 'POST':
+            origin = urlsplit(response.url)
+            headers['Origin'] = f'{origin.scheme}://{origin.netloc}'
         url = target
     raise UserError('SSO 리다이렉트가 너무 많습니다.')
 
@@ -97,6 +103,30 @@ def prepare_login(session):
     return response, action, data, challenge[1], RSA.construct((int(public_key[1], 16), int(public_key[2], 16)))
 
 
+def script_value(scripts, name):
+    match = re.search(r"\b" + re.escape(name) + r"\s*=\s*([\"'])(.*?)\1", scripts)
+    return match[2] if match else ''
+
+
+def rejection(scripts):
+    # Show fixed labels and tightly validated codes, never raw server text.
+    message = script_value(scripts, 'returnMessage')
+    code = script_value(scripts, 'retCode') or script_value(scripts, 'returnCode')
+    if not re.fullmatch(r'(?:\[[A-Z_]{1,20}\])?[A-Z0-9_-]{1,16}', code):
+        code = '없음'
+    if re.search(r'잠[금김]|locked', message, re.I):
+        reason = '계정 잠금 안내'
+    elif re.search(r'캡차|captcha|추가.*인증|인증.*추가', message, re.I):
+        reason = '추가 인증 안내'
+    elif re.search(r'비밀번호.*(?:변경|만료)|password.*(?:expir|change)', message, re.I):
+        reason = '비밀번호 변경/만료 안내'
+    elif re.search(r'일치|올바르지|invalid|incorrect', message, re.I):
+        reason = '계정 정보 불일치 안내'
+    else:
+        reason = '서버의 상세 사유를 자동 분류하지 못함'
+    return UserError(f'SSO에서 로그인을 완료하지 못했습니다.\n{reason} (서버 코드: {code}).\n자동 재시도는 하지 않았습니다. 일반 LearnUS 로그인에서 계정 상태를 확인하세요.')
+
+
 def login_sso(username, password, session):
     page, action, data, challenge, public_key = prepare_login(session)
     payload = json.dumps({'userid': username, 'userpw': password, 'ssoChallenge': challenge},
@@ -114,10 +144,26 @@ def login_sso(username, password, session):
     session.stage = '4/5 LearnUS 세션 생성'
     for _ in range(6):
         soup = BeautifulSoup(response.text, 'html.parser')
-        if soup.select('input[type="password"]'):
-            raise UserError('SSO에서 로그인을 완료하지 못했습니다. 학번·비밀번호 또는 추가 인증 여부를 확인하세요.')
         scripts = '\n'.join(tag.get_text() for tag in soup.find_all('script', src=False))
-        form = soup.find('form')
+        form = soup.find('form', attrs={'name': 'ssoLoginForm'})
+        if form is None:
+            form = soup.find('form')
+        # The SSO template can keep its password UI after authentication.
+        # Relay only with explicit callback URL AND returned authentication fields.
+        login_url = script_value(scripts, 'login_url')
+        if form is not None and login_url and soup.select('input[type="password"]'):
+            callback = trusted_url(urljoin(response.url, login_url))
+            action = trusted_url(urljoin(response.url, form.get('action', '')))
+            relay = form_data(form)
+            if (urlsplit(callback).hostname == 'ys.learnus.org' and callback == action
+                    and any(relay.get(name) for name in ('E3', 'E4', 'S2'))
+                    and re.search(r'\.submit\s*\(', scripts)):
+                relay['loginId'] = ''
+                relay['loginPasswd'] = ''
+                response = request(session, 'POST', action, referer=response.url, data=relay)
+                continue
+        if soup.select('input[type="password"]'):
+            raise rejection(scripts)
         if form is not None and re.search(r'\.submit\s*\(', scripts):
             if any(item.get('type', 'text').lower() not in ('hidden', 'submit', 'button') for item in form.select('input')):
                 raise UserError('SSO에 추가 입력이 필요합니다. 자동 로그인을 중단했습니다.')
