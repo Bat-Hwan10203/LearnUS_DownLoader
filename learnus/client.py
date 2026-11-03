@@ -9,7 +9,7 @@ import m3u8
 import requests
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES
-from .auth import login_sso
+from .browser_auth import login_browser
 from .errors import UserError, connection_error
 
 BASE = 'https://ys.learnus.org'
@@ -58,7 +58,7 @@ class Client:
         self.session.close()
         self.session = Session()
         try:
-            login_sso(username, password, self.session)
+            login_browser(username, password, self.session, self.cancel)
             self.session.stage = '로그인 결과 확인'
             page = self.session.get(BASE + '/my/')
             soup = BeautifulSoup(page.text, 'html.parser')

@@ -111,7 +111,7 @@ class ParsingTests(unittest.TestCase):
     def test_login_requires_positive_confirmation(self):
         client = Client()
         fake = type('R', (), {'text':'<html>not logged in</html>', 'url':'https://ys.learnus.org/my/'})()
-        with patch('learnus.client.login_sso'), patch('learnus.client.Session.get', return_value=fake):
+        with patch('learnus.client.login_browser'), patch('learnus.client.Session.get', return_value=fake):
             with self.assertRaises(UserError):
                 client.login('dummy', 'dummy')
         self.assertFalse(client.logged_in)

@@ -14,13 +14,13 @@ class App:
         self.events = queue.Queue()
         self.videos = []
         self.busy = False
-        root.title('LearnUS Downloader')
+        root.title('LearnUS Downloader — 공식 로그인 엔진')
         root.geometry('850x620')
         root.protocol('WM_DELETE_WINDOW', self.close)
         frame = ttk.Frame(root, padding=18)
         frame.pack(fill='both', expand=True)
         ttk.Label(frame, text='LearnUS Downloader', font=('Segoe UI', 20, 'bold')).pack(anchor='w')
-        ttk.Label(frame, text='직접 로그인 → 링크 조회 → 목록에서 선택 → 다운로드').pack(anchor='w', pady=(4, 16))
+        ttk.Label(frame, text='Chrome 엔진으로 창 없이 로그인 → 링크 조회 → 선택 다운로드').pack(anchor='w', pady=(4, 16))
         login = ttk.Frame(frame)
         login.pack(fill='x')
         ttk.Label(login, text='학번').pack(side='left')
